@@ -31,7 +31,7 @@ def run_interactive_stats():
         res_pc      = fl.filtru_cod_postal(input_row, variants)
         res_region  = fl.filtru_regiune(input_row, variants)
         res_street  = fl.filtru_strada(input_row, variants)
-        res_name    = fl.filtru_nume(input_row, variants)
+        res_name    = fl.filtru_nume_flexibil(input_row, variants)
 
         counts_in_group = {cat: 0 for cat in category_map.values()}
 
