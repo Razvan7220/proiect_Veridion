@@ -8,11 +8,11 @@ def run_interactive_stats():
     all_keys = df['input_row_key'].unique()
     total_companies = len(all_keys)
     
-    # Category Mapping - Inverted [2] and [3]
+    # Category Mapping
     category_map = {
         1: "Match 90% (2+ Locations + Name)",
-        2: "Name + 1 Location (Possible Match)",          # Acum pe pozitia 2
-        3: "Location Found (1+), but NO Name Match",     # Acum pe pozitia 3
+        2: "Name + 1 Location (Possible Match)",
+        3: "Location Found (1+), but NO Name Match",
         4: "Name Only (Zero Location - RISK)",
         5: "No Match Found"
     }
@@ -26,16 +26,34 @@ def run_interactive_stats():
         variants = df[df['input_row_key'] == key].reset_index(drop=True)
         input_row = variants.iloc[0]
         
+        # Standard Location Filters
         res_country = fl.filtru_tara(input_row, variants)
         res_pc      = fl.filtru_cod_postal(input_row, variants)
         res_region  = fl.filtru_regiune(input_row, variants)
         res_street  = fl.filtru_strada(input_row, variants)
+        res_city    = fl.filtru_oras(input_row, variants)
+        res_number  = fl.filtru_numar_strada(input_row, variants)
+        
+        # New Raw Location Filter (Safety Net)
+        res_raw_loc = fl.filtru_locations_brut(input_row, variants)
+        
+        # Name Filter
         res_name    = fl.filtru_nume_flexibil(input_row, variants, threshold=0.1)
 
         counts_in_group = {cat: 0 for cat in category_map.values()}
 
         for i in range(len(variants)):
-            loc_score = sum([i in res_country, i in res_pc, i in res_region, i in res_street])
+            # Score now includes the raw location match as an extra point of evidence
+            loc_score = sum([
+                i in res_country, 
+                i in res_pc, 
+                i in res_region, 
+                i in res_street,
+                i in res_city,
+                i in res_number,
+                i in res_raw_loc  # Added raw location score
+            ])
+            
             name_match = i in res_name
 
             if name_match and loc_score >= 2:
@@ -49,6 +67,7 @@ def run_interactive_stats():
             else:
                 counts_in_group[category_map[5]] += 1
 
+        # Determine the best category for this company group
         found_cat = None
         for i in range(1, 6):
             cat_name = category_map[i]

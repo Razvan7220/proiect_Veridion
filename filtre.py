@@ -157,3 +157,59 @@ def filtru_nume(input_row, candidates):
         if input_val in cand_name or cand_name in input_val:
             matches.append(i)
     return matches
+
+def filtru_oras(input_row, candidates):
+    """Returns candidate IDs with a matching city name."""
+    input_val = normalize(input_row['input_main_city'])
+    if not input_val: return []
+    
+    matches = []
+    for i, row in candidates.iterrows():
+        # Verificăm potrivirea exactă a orașului
+        if normalize(row['main_city']) == input_val:
+            matches.append(i)
+    return matches
+
+def filtru_numar_strada(input_row, candidates):
+    """Returns candidate IDs with a matching street number."""
+    input_val = extract_numbers(input_row['input_main_street_number'])
+    if not input_val: return []
+    
+    matches = []
+    for i, row in candidates.iterrows():
+        candidate_val = extract_numbers(row['main_street_number'])
+        # Folosim egalitate exactă pentru numere ca să evităm 
+        # situația în care numărul "1" face match cu "10" sau "100"
+        if input_val == candidate_val and candidate_val:
+            matches.append(i)
+    return matches
+
+def filtru_locations_brut(input_row, candidates):
+    """
+    Scans the raw 'locations' string for matches with input city or postcode.
+    Acts as a safety net when structured fields are NULL.
+    """
+    input_city = normalize(input_row.get('input_main_city'))
+    input_pc = extract_numbers(input_row.get('input_main_postcode'))
+    
+    if not input_city and not input_pc:
+        return []
+
+    matches = []
+    for i, row in candidates.iterrows():
+        raw_locs = normalize(row.get('locations'))
+        if not raw_locs:
+            continue
+            
+        # Check if city exists as a substring in the raw locations string
+        city_match = input_city and input_city in raw_locs
+        
+        # Check if postcode digits exist in the raw locations string
+        # Note: We extract numbers from the whole string to handle various formats
+        raw_locs_numbers = extract_numbers(raw_locs)
+        pc_match = input_pc and input_pc in raw_locs_numbers
+        
+        if city_match or pc_match:
+            matches.append(i)
+            
+    return matches
