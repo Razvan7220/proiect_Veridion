@@ -53,7 +53,7 @@ def resolve_category_1():
         res_pc      = fl.filtru_cod_postal(input_row, variants)
         res_region  = fl.filtru_regiune(input_row, variants)
         res_street  = fl.filtru_strada(input_row, variants)
-        res_name_flex = fl.filtru_nume_flexibil(input_row, variants, threshold=0.5)
+        res_name_flex = fl.filtru_nume_flexibil(input_row, variants, threshold=0.1)
 
         qualified = []
         for i, row in variants.iterrows():
