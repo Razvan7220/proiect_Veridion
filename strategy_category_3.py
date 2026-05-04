@@ -25,7 +25,7 @@ def get_completeness_score(row):
     score = sum(1 for field in rich_fields if pd.notnull(row.get(field)) and str(row.get(field)).lower() != 'nan')
     return score / len(rich_fields)
 
-def run_strategy_category_3():
+def resolve_category_3():
     all_keys = df['input_row_key'].unique()
     func_map = {
         'main_country_code': fl.filtru_tara, 'main_postcode': fl.filtru_cod_postal,
@@ -40,7 +40,7 @@ def run_strategy_category_3():
 
     cat3_keys = []
     hard_mismatch_keys = set()
-    clean_keys = set() # Match sau Null Gaps
+    clean_keys = set()
 
     # --- PHASE 1: RISK ASSESSMENT ---
     for key in all_keys:
@@ -68,42 +68,32 @@ def run_strategy_category_3():
         if best_cat == 3:
             cat3_keys.append(key)
             has_hard_mismatch = False
-            
-            # Verificăm dacă recordul care a declanșat Cat 3 are conflicte de date
             for idx in cat3_indices:
                 cand_row = variants.iloc[idx]
                 for inp_col, ver_col in mapping_input_to_ver.items():
                     v_in, v_ver = input_row.get(inp_col), cand_row.get(ver_col)
-                    if pd.notnull(v_in) and str(v_in).strip() != '' and \
-                       pd.notnull(v_ver) and str(v_ver).strip() != '' and str(v_ver).lower() != 'nan':
+                    if pd.notnull(v_in) and str(v_in).strip() != '' and pd.notnull(v_ver) and str(v_ver).strip() != '' and str(v_ver).lower() != 'nan':
                         if idx not in res_list[ver_col]:
-                            has_hard_mismatch = True
-                            break
+                            has_hard_mismatch = True; break
             
             if has_hard_mismatch: hard_mismatch_keys.add(key)
             else: clean_keys.add(key)
 
-    # --- AFISARE RISK ASSESSMENT ---
+    # --- PRINT STATS ---
     print("\n" + "="*75)
     print(" CATEGORY [3] RISK ASSESSMENT: HARD MISMATCH VS CLEAN GAPS")
     print("="*75)
     print(f" TOTAL COMPANIES IN CATEGORY [3]          :  {len(cat3_keys):>4}")
     print("-" * 75)
-    print(f" [!] HARD MISMATCHES (Conflicting Loc)    :  {len(hard_mismatch_keys):>4} ({ (len(hard_mismatch_keys)/len(cat3_keys))*100:>5.1f}%)")
-    print(f" [✓] CLEAN / NULL GAPS (No Conflict)      :  {len(clean_keys):>4} ({ (len(clean_keys)/len(cat3_keys))*100:>5.1f}%)")
+    print(f" [!] HARD MISMATCHES (Conflicting Loc)    :  {len(hard_mismatch_keys):>4}")
+    print(f" [✓] CLEAN / NULL GAPS (No Conflict)      :  {len(clean_keys):>4}")
     print("="*75)
 
-    if hard_mismatch_keys:
-        print(f"\n[!] HARD MISMATCH IDs: {sorted([int(x) for x in hard_mismatch_keys])}")
-
-    # --- PHASE 2: RESOLUTION (Doar pentru cele Clean) ---
-    print(f"\n[*] Resolving clean Category [3] firms via Deep Context...")
+    # --- PHASE 2: RESOLUTION ---
     final_results = []
-
     for key in clean_keys:
         variants = df[df['input_row_key'] == key].reset_index(drop=True)
-        input_row = variants.iloc[0]
-        input_name = input_row['input_company_name']
+        input_row = variants.iloc[0]; input_name = input_row['input_company_name']
         res_list = {col: func(input_row, variants) for col, func in func_map.items()}
         res_raw_loc = fl.filtru_locations_brut(input_row, variants)
         res_name_flex = fl.filtru_nume_flexibil(input_row, variants, threshold=0.1)
@@ -113,28 +103,48 @@ def run_strategy_category_3():
             loc_score = sum([i in matches for matches in res_list.values()]) + (1 if i in res_raw_loc else 0)
             if loc_score >= 1 and i not in res_name_flex:
                 ctx_score = get_deep_context_score(input_name, row)
-                comp_score = get_completeness_score(row)
-                total_rank = (loc_score * 5) + (ctx_score * 20) + (comp_score * 2)
+                # Scor calculat pentru rank
+                current_rank = (loc_score * 5) + (ctx_score * 20)
 
                 qualified.append({
-                    "id": i, "loc": loc_score, "ctx": ctx_score, "rank": total_rank,
-                    "vid": row['veridion_id'], "v_name": row['company_name']
+                    "id": i, "loc": loc_score, "ctx": ctx_score, 
+                    "vid": row['veridion_id'], "v_name": row['company_name'],
+                    "rank": current_rank
                 })
 
         if qualified:
-            qualified.sort(key=lambda x: (x['ctx'], x['loc'], x['rank']), reverse=True)
-            best = qualified[0]
-            status = "Resolved by Deep Context" if best['ctx'] > 0 else "Location Match Only (Weak)"
+            # Sortăm după Rank
+            qualified.sort(key=lambda x: x['rank'], reverse=True)
             
+            best = qualified[0]
+            
+            # --- LOGICA DE TIE-BREAKER ADĂUGATĂ ---
+            if len(qualified) > 1:
+                second = qualified[1]
+                if best['rank'] == second['rank']:
+                    status = "Absolute Tie"
+                else:
+                    status = "Resolved by Deep Context" if best['ctx'] > 0 else "Location Match Only (Weak)"
+            else:
+                status = "Resolved by Deep Context" if best['ctx'] > 0 else "Location Match Only (Weak)"
+            # --------------------------------------
+
             final_results.append({
-                "key": int(key), "status": status, "ctx": round(best['ctx'], 2),
-                "loc": best['loc'], "vid": best['vid'], "v_name": best['v_name']
+                "key": int(key), 
+                "status": status, 
+                "ctx": round(best['ctx'], 2),
+                "loc": best['loc'], 
+                "vid": best['vid'], 
+                "v_name": best['v_name'],
+                "rank": best['rank']
             })
 
     res_df = pd.DataFrame(final_results)
     if not res_df.empty:
         print("\n=== RESOLUTION SUMMARY (CLEAN CAT 3) ===")
         print(res_df.sort_values('ctx', ascending=False)[['key', 'status', 'ctx', 'loc', 'v_name']].to_string(index=False))
+    
+    return res_df
 
 if __name__ == "__main__":
-    run_strategy_category_3() # Sau run_strategy_category_3() daca ai redenumit-o
+    resolve_category_3()

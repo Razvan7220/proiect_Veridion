@@ -85,5 +85,5 @@ def debug_key_resolution(row_key):
 
 if __name__ == "__main__":
     # Target keys with ties to see how they rank now
-    target_key = 210 
+    target_key = 66
     debug_key_resolution(target_key)
